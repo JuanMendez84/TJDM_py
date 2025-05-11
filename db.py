@@ -70,3 +70,17 @@ def crear_tabla_juegos_categorias():
     ''')
     conn.commit()
     conn.close()
+
+def obtener_categorias_de_juego(juego_id):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT C.nombre
+        FROM CATEGORIAS C
+        JOIN JUEGOS_CATEGORIAS JC ON C.id = JC.categoria_id
+        WHERE JC.juego_id = ?
+        ORDER BY C.nombre
+    ''', (juego_id,))
+    categorias = [row[0] for row in cursor.fetchall()]
+    conn.close()
+    return categorias
