@@ -9,6 +9,7 @@ if __name__ == "__main__":
     crear_tabla_juegos()
     crear_tabla_categorias()
     crear_tabla_juegos_categorias()
+    crear_tablas_torneos()
 
     app = QApplication(sys.argv)
     login = LoginDialog()

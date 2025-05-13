@@ -84,3 +84,44 @@ def obtener_categorias_de_juego(juego_id):
     categorias = [row[0] for row in cursor.fetchall()]
     conn.close()
     return categorias
+
+def crear_tablas_torneos():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Tabla principal TORNEOS
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS TORNEOS (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT NOT NULL UNIQUE,
+            descripcion TEXT,
+            fecha_creacion TEXT NOT NULL,
+            fecha_inicio TEXT NOT NULL,
+            fecha_fin TEXT
+        )
+    ''')
+    
+    # Tabla intermedia TORNEOS_USUARIOS
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS TORNEOS_USUARIOS (
+            torneo_id INTEGER NOT NULL,
+            usuario_id INTEGER NOT NULL,
+            PRIMARY KEY (torneo_id, usuario_id),
+            FOREIGN KEY (torneo_id) REFERENCES TORNEOS(id) ON DELETE CASCADE,
+            FOREIGN KEY (usuario_id) REFERENCES USUARIOS(id) ON DELETE CASCADE
+        )
+    ''')
+    
+    # Tabla intermedia TORNEOS_JUEGOS
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS TORNEOS_JUEGOS (
+            torneo_id INTEGER NOT NULL,
+            juego_id INTEGER NOT NULL,
+            PRIMARY KEY (torneo_id, juego_id),
+            FOREIGN KEY (torneo_id) REFERENCES TORNEOS(id) ON DELETE CASCADE,
+            FOREIGN KEY (juego_id) REFERENCES JUEGOS(id) ON DELETE CASCADE
+        )
+    ''')
+    
+    conn.commit()
+    conn.close()

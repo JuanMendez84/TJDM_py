@@ -1,4 +1,5 @@
 import sqlite3
+import warnings
 from db import DB_PATH, obtener_categorias_de_juego
 
 
@@ -39,14 +40,14 @@ class GestionJuegosWidget(QWidget):
         self.btn_anadir.clicked.connect(self.anadir_juego)
 
         # Lista de categorías (AÑADIR DESPUÉS DE LOS CAMPOS)
-        self.categorias_list = QListWidget()
-        self.categorias_list.setSelectionMode(QListWidget.MultiSelection)
+        #self.categorias_list = QListWidget()
+        #self.categorias_list.setSelectionMode(QListWidget.MultiSelection)
 
         # Añadir elementos al formulario (ORDEN CORRECTO)
         form_layout.addRow("Nombre:", self.input_nombre)
         form_layout.addRow("Mínimo jugadores:", self.input_min)
         form_layout.addRow("Máximo jugadores:", self.input_max)
-        form_layout.addRow("Categorías:", self.categorias_list)  # <-- Ahora sí existe input_nombre
+        #form_layout.addRow("Categorías:", self.categorias_list)  # <-- Ahora sí existe input_nombre
         form_layout.addRow(self.btn_anadir)
 
         # Botones adicionales
@@ -65,7 +66,7 @@ class GestionJuegosWidget(QWidget):
 
         # Cargar datos (LLAMAR AL FINAL)
         self.cargar_juegos()
-        self.cargar_categorias_disponibles()  # <-- Ahora input_nombre ya está definido
+        #self.cargar_categorias_disponibles()  # <-- Ahora input_nombre ya está definido
         self.tabla_juegos.itemChanged.connect(self.guardar_edicion)
         self.tabla_juegos.itemSelectionChanged.connect(self.actualizar_botones)
 
@@ -100,10 +101,12 @@ class GestionJuegosWidget(QWidget):
                 QMessageBox.critical(self, "Error", f"No se pudo eliminar: {str(e)}")
 
     def cargar_juegos(self):
-        try:
-            self.tabla_juegos.itemChanged.disconnect(self.guardar_edicion)
-        except TypeError:
-            pass  # No estaba conectada
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            try:
+                self.tabla_juegos.itemChanged.disconnect(self.guardar_edicion)
+            except (TypeError, RuntimeError) as e:
+                pass  # No estaba conectada
 
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()

@@ -1,6 +1,7 @@
 from PySide6.QtWidgets import QMainWindow, QMessageBox, QWidget
 from widgets.juegos_widget import GestionJuegosWidget
 from widgets.categorias_widget import GestionCategoriasWidget
+from widgets.torneos_widget import GestionTorneosWidget
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -17,6 +18,8 @@ class MainWindow(QMainWindow):
         gestionar_juegos_action.triggered.connect(self.abrir_gestion_juegos)
         gestionar_categorias_action = archivo_menu.addAction("Gestionar categorías")
         gestionar_categorias_action.triggered.connect(self.abrir_gestion_categorias)
+        gestionar_torneos_action = archivo_menu.addAction("Gestionar torneos")
+        gestionar_torneos_action.triggered.connect(self.abrir_gestion_torneos)
         salir_action = archivo_menu.addAction("Salir")
         salir_action.triggered.connect(self.close)
 
@@ -37,6 +40,10 @@ class MainWindow(QMainWindow):
     def abrir_gestion_juegos(self):
         self.gestion_juegos_widget = GestionJuegosWidget()
         self.setCentralWidget(self.gestion_juegos_widget)  # Reemplaza el contenido central
+
+    def abrir_gestion_torneos(self):
+        self.gestion_torneos_widget = GestionTorneosWidget()
+        self.setCentralWidget(self.gestion_torneos_widget)
 
     def mostrar_acerca_de(self):
         QMessageBox.information(self, "Acerca de", "Aplicación de ejemplo con PySide6.")
