@@ -1,12 +1,14 @@
 import sqlite3
 import warnings
+import csv
+import pandas as pd
 from db import DB_PATH, obtener_categorias_de_juego
 
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem, QHeaderView,
+    QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem, QHeaderView, QFileDialog,
     QFormLayout, QLineEdit, QSpinBox, QPushButton, QFrame, QHBoxLayout,
-    QMessageBox, QListWidget, QListWidgetItem, QDialog, QLabel, QDialogButtonBox
+    QMessageBox, QListWidget, QListWidgetItem, QDialog, QLabel, QDialogButtonBox, QMessageBox
 )
 
 class GestionJuegosWidget(QWidget):
@@ -38,6 +40,8 @@ class GestionJuegosWidget(QWidget):
         self.input_max.setMaximum(999)
         self.btn_anadir = QPushButton("Añadir juego")
         self.btn_anadir.clicked.connect(self.anadir_juego)
+        self.btn_importar = QPushButton("Agregar desde fichero...")
+        self.btn_importar.clicked.connect(self.importar_desde_fichero)
 
         # Lista de categorías (AÑADIR DESPUÉS DE LOS CAMPOS)
         #self.categorias_list = QListWidget()
@@ -57,6 +61,7 @@ class GestionJuegosWidget(QWidget):
         self.btn_eliminar.clicked.connect(self.eliminar_juego)
         botones_layout.addWidget(self.btn_anadir)
         botones_layout.addWidget(self.btn_eliminar)
+        botones_layout.addWidget(self.btn_importar)
         form_layout.addRow(botones_layout)
 
         form_frame.setLayout(form_layout)
@@ -274,3 +279,77 @@ class GestionJuegosWidget(QWidget):
         finally:
             conn.close()
         self.cargar_juegos()
+
+    def importar_desde_fichero(self):
+        archivo, _ = QFileDialog.getOpenFileName(
+            self, "Seleccionar fichero", "", "CSV (*.csv);;Excel (*.xlsx *.xls)"
+        )
+        if not archivo:
+            return
+
+        # Leer el archivo
+        filas = []
+        if archivo.lower().endswith('.csv'):
+            with open(archivo, encoding='utf-8') as f:
+                reader = csv.reader(f, delimiter=';')
+                filas = [row for row in reader if row]
+        else:
+            df = pd.read_excel(archivo, header=None)
+            filas = df.values.tolist()
+
+        # Validar y procesar filas
+        informe = []
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+
+        # Obtener todas las categorías existentes
+        cursor.execute("SELECT nombre, id FROM CATEGORIAS")
+        categorias_dict = {nombre.strip().lower(): idcat for nombre, idcat in cursor.fetchall()}
+
+        num_insertados = 0
+        for idx, fila in enumerate(filas, start=1):
+            if len(fila) < 4:
+                informe.append(f"Fila {idx}: formato incorrecto (faltan columnas)")
+                continue
+
+            nombre_juego = str(fila[0]).strip()
+            min_jug = str(fila[1]).strip()
+            max_jug = str(fila[2]).strip()
+            categorias = [c.strip() for c in str(fila[3]).split(',') if c.strip()]
+
+            # Validar categorías
+            categorias_no_existentes = [c for c in categorias if c.lower() not in categorias_dict]
+            if categorias_no_existentes:
+                informe.append(f"Fila {idx}: categorías no existentes: {', '.join(categorias_no_existentes)}")
+                continue
+
+            # Insertar juego
+            try:
+                cursor.execute(
+                    "INSERT INTO JUEGOS (nombre, MinJugadores, MaxJugadores) VALUES (?, ?, ?)",
+                    (nombre_juego, min_jug, max_jug)
+                )
+                juego_id = cursor.lastrowid
+                # Insertar en JUEGOS_CATEGORIAS
+                for cat in categorias:
+                    cursor.execute(
+                        "INSERT INTO JUEGOS_CATEGORIAS (juego_id, categoria_id) VALUES (?, ?)",
+                        (juego_id, categorias_dict[cat.lower()])
+                    )
+                num_insertados += 1
+            except sqlite3.IntegrityError:
+                informe.append(f"Fila {idx}: el juego '{nombre_juego}' ya existe (descartado)")
+                continue
+
+        conn.commit()
+        conn.close()
+
+        # Mostrar informe
+        mensaje = f"Juegos insertados correctamente: {num_insertados}\n"
+        if informe:
+            mensaje += "\nErrores:\n" + "\n".join(informe)
+        else:
+            mensaje += "\nNo hubo errores."
+        QMessageBox.information(self, "Importación finalizada", mensaje)
+
+        self.cargar_juegos()  # Refresca la tabla
