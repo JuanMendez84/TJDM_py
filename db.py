@@ -23,7 +23,8 @@ def crear_bd():
         CREATE TABLE IF NOT EXISTS USUARIOS (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             usuario TEXT UNIQUE NOT NULL,
-            contrasena TEXT NOT NULL
+            contrasena TEXT NOT NULL,
+            nombre TEXT
         )
     ''')
     cursor.execute(
