@@ -124,5 +124,63 @@ def crear_tablas_torneos():
         )
     ''')
     
+def crear_partida_jugadores():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+CREATE TABLE IF NOT EXISTS PARTIDA_JUGADORES (
+    partida_id INTEGER NOT NULL,
+    usuario_id INTEGER NOT NULL,
+    posicion INTEGER NOT NULL CHECK(posicion > 0),  -- 1=primero, 2=segundo...
+    puntos INTEGER,  -- Opcional: para sistemas por puntos
+    FOREIGN KEY (partida_id) REFERENCES PARTIDAS(id) ON DELETE CASCADE,
+    FOREIGN KEY (usuario_id) REFERENCES USUARIOS(id) ON DELETE CASCADE,
+    PRIMARY KEY (partida_id, usuario_id),
+    UNIQUE(partida_id, posicion)  -- Evita posiciones duplicadas en una partida
+)
+    ''')
+
+    conn.commit()
+    conn.close()
+
+
+def crear_tabla_partidas():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS PARTIDAS (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        torneo_id INTEGER NOT NULL,
+        juego_id INTEGER NOT NULL,
+        fecha_inicio TEXT,  -- Formato ISO: 'YYYY-MM-DD HH:MM:SS'
+        fecha_fin TEXT,
+        FOREIGN KEY (torneo_id) REFERENCES TORNEOS(id) ON DELETE CASCADE,
+        FOREIGN KEY (juego_id) REFERENCES JUEGOS(id) ON DELETE CASCADE,
+        UNIQUE(torneo_id, juego_id, fecha_inicio)  -- Evita duplicados en mismo torneo/juego/hora
+    )
+    ''')
+
+    conn.commit()
+    conn.close()
+
+def crear_tabla_partida_jugadores():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS PARTIDA_JUGADORES (
+        partida_id INTEGER NOT NULL,
+        usuario_id INTEGER NOT NULL,
+        posicion INTEGER NOT NULL CHECK(posicion > 0),  -- 1=primero, 2=segundo...
+        puntos INTEGER,  -- Opcional: para sistemas por puntos
+        FOREIGN KEY (partida_id) REFERENCES PARTIDAS(id) ON DELETE CASCADE,
+        FOREIGN KEY (usuario_id) REFERENCES USUARIOS(id) ON DELETE CASCADE,
+        PRIMARY KEY (partida_id, usuario_id),
+        UNIQUE(partida_id, posicion)  -- Evita posiciones duplicadas en una partida
+    )
+    ''')
+
     conn.commit()
     conn.close()

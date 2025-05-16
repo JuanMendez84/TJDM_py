@@ -1,10 +1,11 @@
 import sqlite3
 from db import DB_PATH
+import random
 from datetime import datetime
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem, 
+    QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem, QSpinBox,
     QPushButton, QHBoxLayout, QMessageBox, QDialog, QListWidget, QListWidgetItem,
-    QFormLayout, QLineEdit, QTextEdit, QDateEdit, QHeaderView
+    QFormLayout, QLineEdit, QTextEdit, QDateEdit, QHeaderView, QLabel, QComboBox
 )
 from PySide6.QtCore import Qt, QDate
 
@@ -12,46 +13,174 @@ class FormularioTorneo(QDialog):
     def __init__(self, parent=None, torneo_data=None):
         super().__init__(parent)
         self.setWindowTitle("Nuevo Torneo" if not torneo_data else "Editar Torneo")
-        
-        layout = QFormLayout()
-        
-        # Campos del formulario
+        self.layout = QVBoxLayout()
+        self.setLayout(self.layout)
+
+        # Campos básicos
         self.input_nombre = QLineEdit()
         self.input_descripcion = QTextEdit()
         self.input_fecha_inicio = QDateEdit(calendarPopup=True)
         self.input_fecha_inicio.setDate(QDate.currentDate())
         self.input_fecha_fin = QDateEdit(calendarPopup=True)
         self.input_fecha_fin.setDate(QDate.currentDate().addMonths(1))
-        
-        # Listas de selección múltiple
+
+        self.layout.addWidget(QLabel("Nombre:"))
+        self.layout.addWidget(self.input_nombre)
+        self.layout.addWidget(QLabel("Descripción:"))
+        self.layout.addWidget(self.input_descripcion)
+        self.layout.addWidget(QLabel("Fecha inicio:"))
+        self.layout.addWidget(self.input_fecha_inicio)
+        self.layout.addWidget(QLabel("Fecha fin (opcional):"))
+        self.layout.addWidget(self.input_fecha_fin)
+
+        # Lista de usuarios (jugadores del torneo)
         self.lista_usuarios = QListWidget()
         self.lista_usuarios.setSelectionMode(QListWidget.MultiSelection)
+        self.cargar_usuarios()
+        self.layout.addWidget(QLabel("Jugadores:"))
+        self.layout.addWidget(self.lista_usuarios)
+
+        # Selector de método de selección de juegos
+        self.combo_metodo = QComboBox()
+        self.combo_metodo.addItems([
+            "Manualmente", 
+            "Totalmente al azar",
+            "Al azar por categorías"
+        ])
+        self.layout.addWidget(QLabel("Método de selección de juegos:"))
+        self.layout.addWidget(self.combo_metodo)
+
+        # Widgets dinámicos según el método
+        self.widget_dinamico = QWidget()
+        self.layout_dinamico = QVBoxLayout()
+        self.widget_dinamico.setLayout(self.layout_dinamico)
+        self.layout.addWidget(self.widget_dinamico)
+
+        # Lista de juegos seleccionados
         self.lista_juegos = QListWidget()
         self.lista_juegos.setSelectionMode(QListWidget.MultiSelection)
-
-        # Cargar usuarios y juegos de la BD
-        self.cargar_usuarios()
-        self.cargar_juegos()
-
-        layout.addRow("Nombre:", self.input_nombre)
-        layout.addRow("Descripción:", self.input_descripcion)
-        layout.addRow("Fecha inicio:", self.input_fecha_inicio)
-        layout.addRow("Fecha fin (opcional):", self.input_fecha_fin)
-        layout.addRow("Jugadores:", self.lista_usuarios)
-        layout.addRow("Juegos:", self.lista_juegos)
+        self.layout.addWidget(QLabel("Juegos seleccionados:"))
+        self.layout.addWidget(self.lista_juegos)
 
         # Botones
-        btn_guardar = QPushButton("Guardar")
-        btn_guardar.clicked.connect(self.accept)
-        btn_cancelar = QPushButton("Cancelar")
-        btn_cancelar.clicked.connect(self.reject)
-        
-        layout.addRow(btn_guardar, btn_cancelar)
-        self.setLayout(layout)
-        
-        # Cargar datos si estamos editando
-        if torneo_data:
-            self.cargar_datos(torneo_data)
+        self.btn_guardar = QPushButton("Guardar")
+        self.btn_guardar.clicked.connect(self.accept)
+        self.btn_cancelar = QPushButton("Cancelar")
+        self.btn_cancelar.clicked.connect(self.reject)
+        self.layout.addWidget(self.btn_guardar)
+        self.layout.addWidget(self.btn_cancelar)
+
+        # Inicializar
+        self.combo_metodo.currentIndexChanged.connect(self.actualizar_ui)
+        self.actualizar_ui()  # Inicializar la UI
+
+        # Si editas, puedes cargar datos aquí (no implementado en este fragmento)
+
+    def actualizar_ui(self):
+        # Limpiar widgets dinámicos
+        while self.layout_dinamico.count():
+            child = self.layout_dinamico.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        metodo = self.combo_metodo.currentText()
+        self.lista_juegos.clear()
+
+        if metodo == "Manualmente":
+            # Cargar todos los juegos para selección manual
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, nombre FROM JUEGOS ORDER BY nombre")
+            juegos = cursor.fetchall()
+            conn.close()
+            for juego_id, nombre in juegos:
+                item = QListWidgetItem(nombre)
+                item.setData(Qt.UserRole, juego_id)
+                self.lista_juegos.addItem(item)
+            self.lista_juegos.setSelectionMode(QListWidget.MultiSelection)
+
+        elif metodo == "Totalmente al azar":
+            self.spin_num_juegos = QSpinBox()
+            self.spin_num_juegos.setMinimum(1)
+            self.spin_num_juegos.setMaximum(50)
+            self.btn_generar = QPushButton("Generar lista aleatoria")
+            self.btn_generar.clicked.connect(self.generar_aleatorio_total)
+            self.layout_dinamico.addWidget(QLabel("Número de juegos:"))
+            self.layout_dinamico.addWidget(self.spin_num_juegos)
+            self.layout_dinamico.addWidget(self.btn_generar)
+
+        elif metodo == "Al azar por categorías":
+            self.lista_categorias = QListWidget()
+            self.lista_categorias.setSelectionMode(QListWidget.MultiSelection)
+            self.cargar_categorias()
+            self.spin_num_juegos = QSpinBox()
+            self.spin_num_juegos.setMinimum(1)
+            self.spin_num_juegos.setMaximum(50)
+            self.btn_generar = QPushButton("Generar por categorías")
+            self.btn_generar.clicked.connect(self.generar_aleatorio_categorias)
+            self.layout_dinamico.addWidget(QLabel("Selecciona categorías:"))
+            self.layout_dinamico.addWidget(self.lista_categorias)
+            self.layout_dinamico.addWidget(QLabel("Número de juegos:"))
+            self.layout_dinamico.addWidget(self.spin_num_juegos)
+            self.layout_dinamico.addWidget(self.btn_generar)
+
+    def cargar_categorias(self):
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT nombre FROM CATEGORIAS ORDER BY nombre")
+        categorias = cursor.fetchall()
+        conn.close()
+        self.lista_categorias.clear()
+        for nombre, in categorias:
+            item = QListWidgetItem(nombre)
+            self.lista_categorias.addItem(item)
+
+    def generar_aleatorio_total(self):
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, nombre FROM JUEGOS")
+        todos_juegos = cursor.fetchall()
+        conn.close()
+        num_juegos = self.spin_num_juegos.value()
+        seleccionados = random.sample(todos_juegos, min(num_juegos, len(todos_juegos)))
+        self.lista_juegos.clear()
+        for juego_id, nombre in seleccionados:
+            item = QListWidgetItem(nombre)
+            item.setData(Qt.UserRole, juego_id)
+            item.setSelected(True)
+            self.lista_juegos.addItem(item)
+        self.lista_juegos.setSelectionMode(QListWidget.MultiSelection)
+
+    def generar_aleatorio_categorias(self):
+        # Obtener las categorías seleccionadas
+        categorias = [item.text() for item in self.lista_categorias.selectedItems()]
+        if not categorias:
+            return
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        # Obtener juegos que pertenezcan a al menos una de las categorías seleccionadas
+        placeholders = ",".join("?" for _ in categorias)
+        cursor.execute(f"""
+            SELECT DISTINCT J.id, J.nombre
+            FROM JUEGOS J
+            JOIN JUEGOS_CATEGORIAS JC ON J.id = JC.juego_id
+            JOIN CATEGORIAS C ON JC.categoria_id = C.id
+            WHERE C.nombre IN ({placeholders})
+            ORDER BY J.nombre
+        """, categorias)
+        juegos = cursor.fetchall()
+        conn.close()
+        num_juegos = self.spin_num_juegos.value()
+        seleccionados = random.sample(juegos, min(num_juegos, len(juegos)))
+        self.lista_juegos.clear()
+        for juego_id, nombre in seleccionados:
+            item = QListWidgetItem(nombre)
+            item.setData(Qt.UserRole, juego_id)
+            item.setSelected(True)
+            self.lista_juegos.addItem(item)
+        self.lista_juegos.setSelectionMode(QListWidget.MultiSelection)
+
+#fin del código
     
     def cargar_datos(self, data):
         self.input_nombre.setText(data['nombre'])
