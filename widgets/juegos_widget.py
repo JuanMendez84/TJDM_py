@@ -3,8 +3,7 @@ import warnings
 import csv
 import pandas as pd
 from db import DB_PATH, obtener_categorias_de_juego
-
-
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem, QHeaderView, QFileDialog,
     QFormLayout, QLineEdit, QSpinBox, QPushButton, QFrame, QHBoxLayout,
@@ -22,7 +21,7 @@ class GestionJuegosWidget(QWidget):
         self.tabla_juegos.setHorizontalHeaderLabels(["Nombre", "MinJugadores", "MaxJugadores", "Categorías"])
         self.tabla_juegos.verticalHeader().setVisible(False)
         self.tabla_juegos.setEditTriggers(QTableWidget.DoubleClicked | QTableWidget.SelectedClicked)
-        self.tabla_juegos.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.tabla_juegos.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.tabla_juegos.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self.tabla_juegos.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
 
@@ -112,28 +111,44 @@ class GestionJuegosWidget(QWidget):
                 self.tabla_juegos.itemChanged.disconnect(self.guardar_edicion)
             except (TypeError, RuntimeError) as e:
                 pass  # No estaba conectada
-
+        
+        self.tabla_juegos.setRowCount(0)
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute('SELECT id, Nombre, MinJugadores, MaxJugadores FROM JUEGOS')
-        juegos = cursor.fetchall()
+        
+        # Obtener todos los juegos con sus categorías
+        cursor.execute('''
+        SELECT J.id, J.nombre, J.MinJugadores, J.MaxJugadores, 
+               GROUP_CONCAT(C.nombre, ', ') as categorias
+        FROM JUEGOS J
+        LEFT JOIN JUEGOS_CATEGORIAS JC ON J.id = JC.juego_id
+        LEFT JOIN CATEGORIAS C ON JC.categoria_id = C.id
+        GROUP BY J.id
+        ORDER BY J.nombre
+    ''')
+
+        for row_idx, (id_juego, nombre, min_jug, max_jug, categorias_str) in enumerate(cursor.fetchall()):
+            # Formatear categorías
+            categorias = categorias_str.split(', ') if categorias_str else []
+            texto_categorias, tooltip_categorias = self.formatear_categorias(categorias)
+
+            # Crear items para la tabla
+            item_nombre = QTableWidgetItem(nombre)
+            item_nombre.setData(Qt.UserRole, id_juego)
+            item_min = QTableWidgetItem(str(min_jug))
+            item_max = QTableWidgetItem(str(max_jug))
+            item_categorias = QTableWidgetItem(texto_categorias)
+            item_categorias.setToolTip(tooltip_categorias)  # <-- Tooltip con todas
+
+            # Añadir fila
+            self.tabla_juegos.insertRow(row_idx)
+            self.tabla_juegos.setItem(row_idx, 0, item_nombre)
+            self.tabla_juegos.setItem(row_idx, 1, item_min)
+            self.tabla_juegos.setItem(row_idx, 2, item_max)
+            self.tabla_juegos.setItem(row_idx, 3, item_categorias)
+
         conn.close()
 
-        self.tabla_juegos.setRowCount(len(juegos))
-        for row, (juego_id, nombre, min_jug, max_jug) in enumerate(juegos):
-            self.tabla_juegos.setItem(row, 0, QTableWidgetItem(nombre))
-            self.tabla_juegos.setItem(row, 1, QTableWidgetItem(str(min_jug)))
-            self.tabla_juegos.setItem(row, 2, QTableWidgetItem(str(max_jug)))
-            categorias = obtener_categorias_de_juego(juego_id)
-            # Mostrar solo las tres primeras, y "..." si hay más
-            if len(categorias) > 3:
-                texto = ", ".join(categorias[:3]) + f" ... (+{len(categorias)-3})"
-            else:
-                texto = ", ".join(categorias)
-            item_cat = QTableWidgetItem(texto)
-            item_cat.setToolTip(", ".join(categorias))  # Tooltip con todas
-            self.tabla_juegos.setItem(row, 3, item_cat)
-    
         self.tabla_juegos.cellClicked.connect(self.mostrar_categorias_completas)
         self.tabla_juegos.itemChanged.connect(self.guardar_edicion)
 
@@ -147,6 +162,12 @@ class GestionJuegosWidget(QWidget):
             item.setData(1, cat_id)  # 1 = Qt.UserRole
             self.categorias_list.addItem(item)
         conn.close()
+
+    def formatear_categorias(self, categorias):
+        if len(categorias) > 3:
+            return ", ".join(categorias[:3]) + "...", ", ".join(categorias)
+        else:
+            return ", ".join(categorias), ", ".join(categorias)
 
     def anadir_juego(self):
         nombre = self.input_nombre.text().strip()
@@ -222,63 +243,72 @@ class GestionJuegosWidget(QWidget):
     def guardar_edicion(self, item):
         fila = item.row()
         columna = item.column()
-        nombre_original = self.tabla_juegos.item(fila, 0).text()
-        min_jug = self.tabla_juegos.item(fila, 1).text()
-        max_jug = self.tabla_juegos.item(fila, 2).text()
-    
-        # Validación de tipos y lógica
+
+        # Obtener ID del juego desde la columna 0
+        item_nombre = self.tabla_juegos.item(fila, 0)
+        juego_id = item_nombre.data(Qt.UserRole)
+        nombre_actual = item_nombre.text()
+
+        # Obtener valores editados
+        nuevo_nombre = nombre_actual
+        nuevo_min = self.tabla_juegos.item(fila, 1).text()
+        nuevo_max = self.tabla_juegos.item(fila, 2).text()
+
+        # Validar tipos
         try:
-            min_jug = int(min_jug)
-            max_jug = int(max_jug)
+            nuevo_min = int(nuevo_min)
+            nuevo_max = int(nuevo_max)
         except ValueError:
-            QMessageBox.warning(self, "Error", "MinJugadores y MaxJugadores deben ser números.")
+            QMessageBox.warning(self, "Error", "Los jugadores deben ser números")
+            self.tabla_juegos.itemChanged.disconnect(self.guardar_edicion)
             self.cargar_juegos()
+            self.tabla_juegos.itemChanged.connect(self.guardar_edicion)
             return
-    
-        if not nombre_original:
-            QMessageBox.warning(self, "Error", "El nombre no puede estar vacío.")
+
+        # Validar lógica
+        if nuevo_max < nuevo_min:
+            QMessageBox.warning(self, "Error", "El máximo debe ser ≥ al mínimo")
+            self.tabla_juegos.itemChanged.disconnect(self.guardar_edicion)
             self.cargar_juegos()
+            self.tabla_juegos.itemChanged.connect(self.guardar_edicion)
             return
-    
-        if max_jug < min_jug:
-            QMessageBox.warning(self, "Error", "El máximo debe ser igual o mayor al mínimo.")
-            self.cargar_juegos()
-            return
-    
-        # Obtener el id del juego editado (para evitar problemas si el nombre cambia)
+
+        # Obtener nombre original desde la base de datos
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute(
-            "SELECT id FROM JUEGOS LIMIT 1 OFFSET ?", (fila,)
-        )
-        resultado = cursor.fetchone()
-        if not resultado:
-            conn.close()
-            return
-        juego_id = resultado[0]
-    
-        # Validar unicidad del nombre si se ha editado
-        cursor.execute(
-            "SELECT COUNT(*) FROM JUEGOS WHERE Nombre=? AND id<>?", (nombre_original, juego_id)
-        )
-        if cursor.fetchone()[0] > 0:
-            QMessageBox.warning(self, "Error", "Ya existe un juego con ese nombre.")
-            self.cargar_juegos()
-            conn.close()
-            return
-    
-        # Actualizar en la base de datos
+        cursor.execute("SELECT nombre FROM JUEGOS WHERE id=?", (juego_id,))
+        nombre_original = cursor.fetchone()[0]
+
+        # Si el nombre cambió, validar duplicados
+        if nombre_actual != nombre_original:
+            cursor.execute(
+                "SELECT COUNT(*) FROM JUEGOS WHERE nombre=? AND id != ?",
+                (nombre_actual, juego_id)
+            )
+            if cursor.fetchone()[0] > 0:
+                QMessageBox.warning(self, "Error", "Ya existe un juego con ese nombre")
+                conn.close()
+                self.tabla_juegos.itemChanged.disconnect(self.guardar_edicion)
+                self.cargar_juegos()
+                self.tabla_juegos.itemChanged.connect(self.guardar_edicion)
+                return
+
+        # Actualizar la base de datos
         try:
             cursor.execute(
-                "UPDATE JUEGOS SET Nombre=?, MinJugadores=?, MaxJugadores=? WHERE id=?",
-                (nombre_original, min_jug, max_jug, juego_id)
+                "UPDATE JUEGOS SET nombre=?, MinJugadores=?, MaxJugadores=? WHERE id=?",
+                (nombre_actual, nuevo_min, nuevo_max, juego_id)
             )
             conn.commit()
         except sqlite3.Error as e:
             QMessageBox.critical(self, "Error", f"No se pudo actualizar: {str(e)}")
         finally:
             conn.close()
-        self.cargar_juegos()
+
+        self.tabla_juegos.itemChanged.disconnect(self.guardar_edicion)
+        self.cargar_juegos()  # Recargar para reflejar cambios
+        self.tabla_juegos.itemChanged.connect(self.guardar_edicion)
+
 
     def importar_desde_fichero(self):
         archivo, _ = QFileDialog.getOpenFileName(

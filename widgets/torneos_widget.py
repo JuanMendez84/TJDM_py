@@ -152,33 +152,56 @@ class FormularioTorneo(QDialog):
         self.lista_juegos.setSelectionMode(QListWidget.MultiSelection)
 
     def generar_aleatorio_categorias(self):
-        # Obtener las categorías seleccionadas
-        categorias = [item.text() for item in self.lista_categorias.selectedItems()]
+        # Obtener categorías seleccionadas (en minúsculas para comparación insensible)
+        categorias = [item.text().strip().lower() for item in self.lista_categorias.selectedItems()]
         if not categorias:
             return
+    
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        # Obtener juegos que pertenezcan a al menos una de las categorías seleccionadas
+    
+        # Paso 1: Obtener IDs de las categorías seleccionadas
         placeholders = ",".join("?" for _ in categorias)
         cursor.execute(f"""
-            SELECT DISTINCT J.id, J.nombre
-            FROM JUEGOS J
-            JOIN JUEGOS_CATEGORIAS JC ON J.id = JC.juego_id
-            JOIN CATEGORIAS C ON JC.categoria_id = C.id
-            WHERE C.nombre IN ({placeholders})
-            ORDER BY J.nombre
+            SELECT id FROM CATEGORIAS 
+            WHERE LOWER(nombre) IN ({placeholders})
         """, categorias)
+        categoria_ids = [row[0] for row in cursor.fetchall()]
+    
+        if not categoria_ids:
+            conn.close()
+            return
+    
+        # Paso 2: Buscar juegos que pertenezcan a TODAS las categorías seleccionadas
+        query = f"""
+            SELECT J.id, J.nombre
+            FROM JUEGOS J
+            WHERE NOT EXISTS (
+                SELECT C.id 
+                FROM CATEGORIAS C 
+                WHERE C.id IN ({','.join(['?']*len(categoria_ids))})
+                AND NOT EXISTS (
+                    SELECT 1 
+                    FROM JUEGOS_CATEGORIAS JC 
+                    WHERE JC.juego_id = J.id 
+                    AND JC.categoria_id = C.id
+                )
+            )
+            ORDER BY RANDOM()
+            LIMIT ?
+        """
+        cursor.execute(query, categoria_ids + [self.spin_num_juegos.value()])
         juegos = cursor.fetchall()
         conn.close()
-        num_juegos = self.spin_num_juegos.value()
-        seleccionados = random.sample(juegos, min(num_juegos, len(juegos)))
+    
+        # Mostrar resultados
         self.lista_juegos.clear()
-        for juego_id, nombre in seleccionados:
+        for juego_id, nombre in juegos:
             item = QListWidgetItem(nombre)
             item.setData(Qt.UserRole, juego_id)
             item.setSelected(True)
             self.lista_juegos.addItem(item)
-        self.lista_juegos.setSelectionMode(QListWidget.MultiSelection)
+    
 
 #fin del código
     
