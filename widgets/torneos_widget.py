@@ -13,42 +13,71 @@ class FormularioTorneo(QDialog):
     def __init__(self, parent=None, torneo_data=None):
         super().__init__(parent)
         self.setWindowTitle("Nuevo Torneo" if not torneo_data else "Editar Torneo")
-        self.layout = QVBoxLayout()
+        self.setMinimumWidth(700)
+        self.setMinimumWidth(800)
+        self.layout = QVBoxLayout(self)
         self.setLayout(self.layout)
 
-        # Campos básicos
+        # --- Primera fila: Nombre, Fecha inicio, Fecha fin ---
+        fila1 = QHBoxLayout()
         self.input_nombre = QLineEdit()
-        self.input_descripcion = QTextEdit()
         self.input_fecha_inicio = QDateEdit(calendarPopup=True)
         self.input_fecha_inicio.setDate(QDate.currentDate())
         self.input_fecha_fin = QDateEdit(calendarPopup=True)
         self.input_fecha_fin.setDate(QDate.currentDate().addMonths(1))
+        fila1.addWidget(QLabel("Nombre:"))
+        fila1.addWidget(self.input_nombre)
+        fila1.addWidget(QLabel("Fecha inicio:"))
+        fila1.addWidget(self.input_fecha_inicio)
+        fila1.addWidget(QLabel("Fecha fin:"))
+        fila1.addWidget(self.input_fecha_fin)
+        self.layout.addLayout(fila1)
 
-        self.layout.addWidget(QLabel("Nombre:"))
-        self.layout.addWidget(self.input_nombre)
-        self.layout.addWidget(QLabel("Descripción:"))
-        self.layout.addWidget(self.input_descripcion)
-        self.layout.addWidget(QLabel("Fecha inicio:"))
-        self.layout.addWidget(self.input_fecha_inicio)
-        self.layout.addWidget(QLabel("Fecha fin (opcional):"))
-        self.layout.addWidget(self.input_fecha_fin)
+        # --- Segunda fila: Descripción ---
+        fila2 = QHBoxLayout()
+        self.input_descripcion = QTextEdit()
+        self.input_descripcion.setMaximumHeight(50)
+        fila2.addWidget(QLabel("Descripción:"))
+        fila2.addWidget(self.input_descripcion)
+        self.layout.addLayout(fila2)
 
-        # Lista de usuarios (jugadores del torneo)
+        # --- Tercera fila: Usuarios y Juegos ---
+        fila3 = QHBoxLayout()
         self.lista_usuarios = QListWidget()
         self.lista_usuarios.setSelectionMode(QListWidget.MultiSelection)
+        self.lista_usuarios.setMaximumHeight(120)
+        self.lista_usuarios.setMaximumWidth(200)
         self.cargar_usuarios()
-        self.layout.addWidget(QLabel("Jugadores:"))
-        self.layout.addWidget(self.lista_usuarios)
 
-        # Selector de método de selección de juegos
+        #self.lista_juegos = QListWidget()
+        #self.lista_juegos.setSelectionMode(QListWidget.MultiSelection)
+        #self.lista_juegos.setMaximumHeight(120)
+        #self.lista_juegos.setMaximumWidth(200)
+        #self.cargar_juegos()
+
+        usuarios_widget = QVBoxLayout()
+        usuarios_widget.addWidget(QLabel("Jugadores:"))
+        usuarios_widget.addWidget(self.lista_usuarios)
+
+        #juegos_widget = QVBoxLayout()
+        #juegos_widget.addWidget(QLabel("Juegos seleccionados:"))
+        #juegos_widget.addWidget(self.lista_juegos)
+
+        fila3.addLayout(usuarios_widget)
+        #fila3.addSpacing(20)
+        #fila3.addLayout(juegos_widget)
+        self.layout.addLayout(fila3)
+
+        fila4 = QHBoxLayout()
         self.combo_metodo = QComboBox()
         self.combo_metodo.addItems([
             "Manualmente", 
             "Totalmente al azar",
             "Al azar por categorías"
         ])
-        self.layout.addWidget(QLabel("Método de selección de juegos:"))
-        self.layout.addWidget(self.combo_metodo)
+        fila4.addWidget(QLabel("Selección de juegos:"))
+        fila4.addWidget(self.combo_metodo)
+        self.layout.addLayout(fila4)
 
         # Widgets dinámicos según el método
         self.widget_dinamico = QWidget()
@@ -63,12 +92,15 @@ class FormularioTorneo(QDialog):
         self.layout.addWidget(self.lista_juegos)
 
         # Botones
+        botones = QHBoxLayout()
         self.btn_guardar = QPushButton("Guardar")
         self.btn_guardar.clicked.connect(self.accept)
         self.btn_cancelar = QPushButton("Cancelar")
         self.btn_cancelar.clicked.connect(self.reject)
-        self.layout.addWidget(self.btn_guardar)
-        self.layout.addWidget(self.btn_cancelar)
+        botones.addStretch()
+        botones.addWidget(self.btn_guardar)
+        botones.addWidget(self.btn_cancelar)
+        self.layout.addLayout(botones)
 
         # Inicializar
         self.combo_metodo.currentIndexChanged.connect(self.actualizar_ui)
@@ -342,6 +374,27 @@ class GestionTorneosWidget(QWidget):
                     cursor.execute(
                         "INSERT INTO TORNEOS_JUEGOS (torneo_id, juego_id) VALUES (?, ?)",
                         (torneo_id, juego_id)
+                    )    
+                        
+                # Crea las partidas y asigna equipos/jugadores
+                # Obtén los ids de los equipos por orden de id
+                cursor.execute("SELECT id FROM EQUIPOS ORDER BY id")
+                equipos_ids = [row[0] for row in cursor.fetchall()]
+
+                for juego_id in juegos_ids:
+                # Crea la partida
+                    cursor.execute(
+                    "INSERT INTO PARTIDAS (torneo_id, juego_id, fecha_inicio, fecha_fin) VALUES (?, ?, NULL, NULL)",
+                    (torneo_id, juego_id)
+                    )
+                    partida_id = cursor.lastrowid
+
+                # Asigna equipos a los jugadores en orden
+                for idx, usuario_id in enumerate(usuarios_ids):
+                    equipo_id = equipos_ids[idx % len(equipos_ids)]  # Rueda por los 6 equipos
+                    cursor.execute(
+                        "INSERT INTO PARTIDA_JUGADORES (partida_id, usuario_id, equipo_id, posicion, puntos) VALUES (?, ?, ?, NULL, 0)",
+                        (partida_id, usuario_id, equipo_id)
                     )
                 
                 conn.commit()
