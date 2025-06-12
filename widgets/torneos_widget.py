@@ -1,4 +1,5 @@
 import sqlite3
+from widgets.partidas_widget import PartidasWidget
 from db import DB_PATH
 import random
 from datetime import datetime
@@ -234,9 +235,6 @@ class FormularioTorneo(QDialog):
             item.setSelected(True)
             self.lista_juegos.addItem(item)
     
-
-#fin del código
-    
     def cargar_datos(self, data):
         self.input_nombre.setText(data['nombre'])
         self.input_descripcion.setPlainText(data['descripcion'])
@@ -273,6 +271,8 @@ class GestionTorneosWidget(QWidget):
         
         # Tabla de torneos
         self.tabla_torneos = QTableWidget()
+        self.tabla_torneos.setSelectionBehavior(QTableWidget.SelectRows)
+        self.tabla_torneos.setSelectionMode(QTableWidget.SingleSelection)
         self.tabla_torneos.setColumnCount(7)
         self.tabla_torneos.setHorizontalHeaderLabels([
             "Nombre", "Descripción", "Fecha Creación", "Fecha Inicio", "Fecha Fin", "Participantes", "Juegos"
@@ -284,6 +284,8 @@ class GestionTorneosWidget(QWidget):
         self.btn_anadir = QPushButton("Añadir Torneo")
         self.btn_editar = QPushButton("Editar Torneo")
         self.btn_eliminar = QPushButton("Eliminar Torneo")
+        self.boton_gestionar_partidas = QPushButton("GESTIONAR PARTIDAS")
+
         self.btn_editar.setEnabled(False)
         self.btn_eliminar.setEnabled(False)
         
@@ -292,6 +294,8 @@ class GestionTorneosWidget(QWidget):
         botones_layout.addWidget(self.btn_anadir)
         botones_layout.addWidget(self.btn_editar)
         botones_layout.addWidget(self.btn_eliminar)
+        botones_layout.addWidget(self.boton_gestionar_partidas)
+
         
         # Ensamblar layout
         self.layout.addWidget(self.tabla_torneos)
@@ -302,6 +306,8 @@ class GestionTorneosWidget(QWidget):
         self.btn_anadir.clicked.connect(self.anadir_torneo)
         self.btn_editar.clicked.connect(self.editar_torneo)
         self.btn_eliminar.clicked.connect(self.eliminar_torneo)
+        self.boton_gestionar_partidas.clicked.connect(self.gestionar_partidas)
+
         self.tabla_torneos.itemSelectionChanged.connect(self.actualizar_botones)
         
         self.cargar_torneos()
@@ -318,7 +324,9 @@ class GestionTorneosWidget(QWidget):
         
         self.tabla_torneos.setRowCount(len(torneos))
         for row, (torneo_id, nombre, desc, creacion, inicio, fin) in enumerate(torneos):
-            self.tabla_torneos.setItem(row, 0, QTableWidgetItem(nombre))
+            item_nombre = QTableWidgetItem(nombre)
+            item_nombre.setData(Qt.UserRole, torneo_id)
+            self.tabla_torneos.setItem(row, 0, item_nombre)
             self.tabla_torneos.setItem(row, 1, QTableWidgetItem(desc if desc else ""))
             self.tabla_torneos.setItem(row, 2, QTableWidgetItem(creacion))
             self.tabla_torneos.setItem(row, 3, QTableWidgetItem(inicio))
@@ -389,13 +397,17 @@ class GestionTorneosWidget(QWidget):
                     )
                     partida_id = cursor.lastrowid
 
-                # Asigna equipos a los jugadores en orden
-                for idx, usuario_id in enumerate(usuarios_ids):
-                    equipo_id = equipos_ids[idx % len(equipos_ids)]  # Rueda por los 6 equipos
-                    cursor.execute(
-                        "INSERT INTO PARTIDA_JUGADORES (partida_id, usuario_id, equipo_id, posicion, puntos) VALUES (?, ?, ?, NULL, 0)",
-                        (partida_id, usuario_id, equipo_id)
-                    )
+                    # Obtener los ids de los equipos por orden de id
+                    cursor.execute("SELECT id FROM EQUIPOS ORDER BY id")
+                    equipos_ids = [row[0] for row in cursor.fetchall()]
+
+                    # Asigna equipos a los jugadores en orden
+                    for idx, usuario_id in enumerate(usuarios_ids):
+                        equipo_id = equipos_ids[idx % len(equipos_ids)]  # Rueda por los 6 equipos
+                        cursor.execute(
+                            "INSERT INTO PARTIDA_JUGADORES (partida_id, usuario_id, equipo_id, posicion, puntos) VALUES (?, ?, ?, NULL, 0)",
+                            (partida_id, usuario_id, equipo_id)
+                        )
                 
                 conn.commit()
                 self.cargar_torneos()
@@ -461,3 +473,19 @@ class GestionTorneosWidget(QWidget):
             return ", ".join(nombres[:3]) + f" ...(+{len(nombres) - 3})"
         else:
             return ", ".join(nombres)
+        
+    def gestionar_partidas(self):
+        seleccion = self.tabla_torneos.selectionModel().selectedRows()
+        if not seleccion:
+            QMessageBox.warning(self, "Aviso", "Selecciona un torneo primero.")
+            return
+
+        # Obtener la fila seleccionada
+        fila = seleccion[0].row()
+        item_nombre = self.tabla_torneos.item(fila, 0)
+        id_torneo = item_nombre.data(Qt.UserRole)
+
+        # Abrir el nuevo widget
+        self.ventana_partidas = PartidasWidget(id_torneo, self)
+        self.ventana_partidas.exec()
+
