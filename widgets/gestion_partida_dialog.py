@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QDialog, QPushButton, QComboBox, QVBoxLayout, QLabel, QHBoxLayout, QWidget, QTableWidget, QTableWidgetItem
+from PySide6.QtWidgets import QDialog, QPushButton, QMessageBox, QComboBox, QVBoxLayout, QLabel, QHBoxLayout, QWidget, QTableWidget, QTableWidgetItem
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtCore import Qt
 import sqlite3
@@ -150,6 +150,12 @@ class GestionPartidaDialog(QDialog):
         self.cargar_jugadores()
 
     def finalizar_partida(self):
+        # Chequeo: no puede haber posiciones repetidas entre equipos distintos
+        posiciones = list(self.equipos_posiciones.values())
+        if len(posiciones) != len(set(posiciones)):
+            QMessageBox.critical(self, "Error", "Dos equipos distintos no pueden tener la misma posición.")
+            return  # No continúa con el update
+
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute("""
@@ -168,4 +174,4 @@ class GestionPartidaDialog(QDialog):
 
         conn.commit()
         conn.close()
-        self.cargar_datos_partida()  # Actualizar UI
+        self.cargar_datos_partida()
